@@ -1,69 +1,69 @@
 #include <EEPROM.h>
 #include "avr/pgmspace.h"
-//#include <avr/wdt.h>
 #include <Wire.h>
 #include <LiquidCrystal_I2C.h>
 #include <CyberLib.h>
-#include <iarduino_RTC.h> //библиотека часов
+#include <iarduino_RTC.h> //clock library
 //Errom adress 0 - n_phone  1-10 phone1 11-20 phone2 21-30 phone3
-#define sms_res 2 // вывод перезагрузки смс
+#define sms_res 2 // sms reload output
 
-//выводы ТН
+// VT outputs
 #define TN_A 3
 #define TN_G 4
 #define TN_N 6
 
-//Коэф. трансформации ТН
+//Coefficient TN transformation
 #define Ktr_TN_A 227
 #define Ktr_TN_G 224
 #define Ktr_TN_N 233
 
-//кнопки
-#define BUTTON_NONE 0 //ничего не нажато
-#define BUTTON_RIGHT 1 //нажата кнопка вправо
-#define BUTTON_UP 2 //нажата кнопка вверх
-#define BUTTON_DOWN 3 //нажата кнопка вниз
-#define BUTTON_LEFT 4 //нажата кнопка влево
-#define BUTTON_SELECT 5 //нажата кнопка выбор
+//button
+#define BUTTON_NONE 0 //nothing pressed
+#define BUTTON_RIGHT 1 //button right
+#define BUTTON_UP 2 //button up
+#define BUTTON_DOWN 3 //button down 
+#define BUTTON_LEFT 4 //button left
+#define BUTTON_SELECT 5 //button select
 
-//мигающий светодиод
+//flashing LED
 #define LED_BLINK 7
 #define CHARGE 8
-//ежемесячная отправка баланса
-#define balance_day 01 //день отправки баланса
-#define balance_hour 10 //час отправки баланса
-#define balance_minutes 01 //минута отправки баланса
-#define balance_minutes1 02 //минута отправки баланса +1
-#define balance_reset 00 // минута отправки баланса -1
+//monthly balance sending
+#define balance_day 01      //day the balance is sent
+#define balance_hour 10     //hour of balance sending
+#define balance_minutes 01  //minute of balance sending
+#define balance_minutes1 02 //minute of sending balance +1
+#define balance_reset 00    //minute balance was sent -1
 
-LiquidCrystal_I2C lcd(0x3F, 16, 2); // Устанавливаем дисплей
-iarduino_RTC time(RTC_DS3231); //устанавливаем часы
+LiquidCrystal_I2C lcd(0x3F, 16, 2); // Set display
+iarduino_RTC time(RTC_DS3231);      //set clock
 
-							   //измерение напряжения
+//voltage measurement
 
-int Utek[3]; //напряжения
-byte Chrg = 0; //статус зарядки 0- нет, 1- зарядка
-unsigned long Chrg_time = 0; //время зарядки
+int Utek[3]; //voltage
+byte Chrg = 0; //charging status 0- no, 1- charging
+unsigned long Chrg_time = 0; //charging time
 
-							 //пременные для временных вычислений
+//variables for temporary calculations
+
 int tmp1;
 byte tmp2;
 byte tmp3;
-byte balance = 0; //сотояние отправки баланса в 10-00 1 числа каждого месяца
-int alanogReadValue; //временная для чтения analogRead
-unsigned long Tin; //временная для время начала
-unsigned long Tout; //временная для время окончания
-unsigned long Tin1; //временная для время начала
-unsigned long Tout1; //временная для время окончания
-unsigned long Usr; //временная для время окончания
-int Uaprev; //предшевствующие значения напряжения
+byte balance = 0; //balance sending status at 10-00 on the 1st day of each month
+int alanogReadValue; //temporary for reading analogRead
+unsigned long Tin; //temporary for start time
+unsigned long Tout; //temporary for end time
+unsigned long Tin1; //temporary for start time
+unsigned long Tout1; //temporary for end time
+unsigned long Usr;   //temporary for end time
+int Uaprev; //prior voltage values
 int Unprev;
-byte type_U = 0; //тип возмущения 0 норм. схема, 1 откл все, 2 откл ввод, 3откл нагр.
+byte type_U = 0; //disturbance type 0 norm. circuit, 1 off all, 2 off input, 3 off load.
 byte type_U_prev = 0;
-unsigned long T_ot; //временная для время начала
+unsigned long T_ot; //temporary for start time
 byte timer_on = 0;
 
-//Меню
+//Menu
 const char MenuName_0[] PROGMEM = "Ua  Ug  Un      ";
 const char MenuName_1[] PROGMEM = "  current time  ";
 const char MenuName_2[] PROGMEM = "    n_phone     ";
@@ -73,26 +73,27 @@ const char MenuName_5[] PROGMEM = "     phone-3    ";
 const char MenuName_6[] PROGMEM = "sms-code   cmd+ ";
 const char MenuName_7[] PROGMEM = "Set up Time/Date";
 const char* const MenuNames[] PROGMEM = { MenuName_0, MenuName_1, MenuName_2, MenuName_3, MenuName_4, MenuName_5, MenuName_6, MenuName_7 };
-byte MenuNowPos = 0; //текущая позиция меню
-byte MenuEdit = 0; //редактирование меню 0- просмотр 1- редактирование
-byte MenuEditPos = 0; //позиция в символа при редактировании
-char menubuffer[16]; // буфер для избежания фрагментации памяти
+byte MenuNowPos = 0; //current menu position
+byte MenuEdit = 0; //edit menu 0-view 1-edit
+byte MenuEditPos = 0; //position in character when editing
+char menubuffer[16]; // buffer to avoid memory fragmentation
 String ph_buf;
-String message; //буфер сообщений
+String message; //message buffer
 String mess;
 
-void setup() {//Настройка выводов
+void setup() {
 	Serial.begin(2400);
 	Serial.setTimeout(4000);
-	time.begin();               //инициализация часов
-	pinMode(TN_A, INPUT);      //инициализация ТН
+	time.begin();               //clock initialization
+    //Setting pins
+	pinMode(TN_A, INPUT);      //VT initialization
 	pinMode(TN_G, INPUT);
 	pinMode(TN_N, INPUT);
 	pinMode(LED_BLINK, OUTPUT);
-	pinMode(CHARGE, OUTPUT); //инициализаци реле заряда
+	pinMode(CHARGE, OUTPUT); //charge relay initialization
 	digitalWrite(CHARGE, HIGH);
 	Chrg = 0;
-	lcd.noBacklight();            // Включаем подсветку
+	lcd.noBacklight();            // Turn on the backlight
 	pinMode(sms_res, OUTPUT);
 	pinMode(13, OUTPUT);
 	digitalWrite(sms_res, HIGH);
@@ -101,12 +102,12 @@ void setup() {//Настройка выводов
 	Unprev = 220;
 	timer_on = 0;
 	type_U_prev = 0;
-	//пинг sms модуля
+	//ping sms module
 	Serial.println(F("AT"));
 	Serial.println(F("AT+CMGF=1"));
 }
 
-byte getPressedButton() { //процедура определения нажатой кнопки для lcd_keyboard_shield
+byte getPressedButton() { //procedure for determining the pressed button for lcd_keyboard_shield
 	Tin = millis();
 	alanogReadValue = 1000;
 	do {
@@ -118,13 +119,13 @@ byte getPressedButton() { //процедура определения нажатой кнопки для lcd_keyboar
 	if (alanogReadValue < 100) {  //0
 		return BUTTON_UP;
 	}
-	else if (alanogReadValue < 400) { //   316
+	else if (alanogReadValue < 400) { //316
 		return BUTTON_DOWN;
 	}
-	else if (alanogReadValue < 650) {// 593
+	else if (alanogReadValue < 650) { //593
 		return BUTTON_RIGHT;
 	}
-	else if (alanogReadValue < 820) { // 780
+	else if (alanogReadValue < 820) { //780
 		return BUTTON_LEFT;
 	}
 	else if (alanogReadValue < 900) { //850
@@ -133,13 +134,13 @@ byte getPressedButton() { //процедура определения нажатой кнопки для lcd_keyboar
 	return BUTTON_NONE;
 }
 
-void DrawMenu0() { // рисование 0 строки
+void DrawMenu0() { // drawing 0 line
 	lcd.setCursor(0, 0);
 	strcpy_P(menubuffer, (char*)pgm_read_word(&(MenuNames[MenuNowPos])));
 	lcd.print(menubuffer);
 }
 
-void DrawMenu1() {  // рисование 1 строки
+void DrawMenu1() {  // drawing 1 line
 	lcd.noCursor();
 	lcd.setCursor(0, 1);
 	lcd.print("                ");
@@ -149,7 +150,7 @@ void DrawMenu1() {  // рисование 1 строки
 			lcd.print(Utek[tmp1]);
 		};
 	}
-	if (MenuNowPos == 1 || MenuNowPos == 7) {                    //!!!часы!!!
+	if (MenuNowPos == 1 || MenuNowPos == 7) {                    //!!!clock!!!
 		lcd.setCursor(0, 1);
 		lcd.print(time.gettime("H:i d-m-Y"));
 		if (MenuEdit == 1) {
@@ -165,7 +166,7 @@ void DrawMenu1() {  // рисование 1 строки
 			lcd.cursor();
 		};
 	}
-	if (MenuNowPos == 3 || MenuNowPos == 4 || MenuNowPos == 5) {  //отображение номеров телефонов
+	if (MenuNowPos == 3 || MenuNowPos == 4 || MenuNowPos == 5) {  //phone number display
 		lcd.setCursor(0, 1);
 		lcd.print("+7              ");
 		for (tmp1 = 0; tmp1 < 10; tmp1++) {
@@ -287,7 +288,7 @@ int Un() {
 	return Usr;
 }
 
-void sendSms(byte ph_n, String text) { //отправка соощения text по номеру телефона 1, 2,3, из errom
+void sendSms(byte ph_n, String text) { //send SMS to phone number 1, 2,3, from errom
 	ph_buf = "";
 	for (tmp2 = 0; tmp2 < 10; tmp2++) {
 		if (ph_n == 1) {
@@ -326,15 +327,15 @@ void loop() {
 	Utek[0] = Ua();
 	Utek[1] = Ug();
 	Utek[2] = Un();
-	if (analogRead(6) < 900) { //переход в меню
+	if (analogRead(6) < 900) { //go to menu
 		Tin = 0;
 		Tout = 0;
 		Tin = millis();
 		while (analogRead(6) < 900 && Tout < 200) {
 			Tout = abs(millis() - Tin);
 		}
-		lcd.init();                 // Инициализация lcd
-		lcd.backlight();            // Включаем подсветку
+		lcd.init();                 // LCD initialization
+		lcd.backlight();            // Turn on the backlight
 		if (Tout > 190) {
 			MenuNowPos = 0;
 			MenuEdit = 0;
@@ -348,7 +349,7 @@ void loop() {
 				tmp2 = MenuNowPos;
 				tmp3 = 0;
 				switch (getPressedButton()) {
-				case BUTTON_RIGHT: // при нажатии кнопки выводим следующий текст
+				case BUTTON_RIGHT: // when the button is clicked, display the following text
 					if (MenuEdit == 0) {
 						if (MenuNowPos == 7) {
 							MenuNowPos = 0;
@@ -360,7 +361,7 @@ void loop() {
 							MenuNowPos++;
 						}
 					}
-					if ((MenuNowPos == 3 || MenuNowPos == 4 || MenuNowPos == 5) && MenuEdit == 1) { //проверить
+					if ((MenuNowPos == 3 || MenuNowPos == 4 || MenuNowPos == 5) && MenuEdit == 1) {
 						MenuEditPos++;
 						if (MenuEditPos >= 12) {
 							MenuEditPos = 2;
@@ -399,7 +400,7 @@ void loop() {
 							MenuNowPos--;
 						}
 					}
-					if ((MenuNowPos == 3 || MenuNowPos == 4 || MenuNowPos == 5) && MenuEdit == 1) { //проверить
+					if ((MenuNowPos == 3 || MenuNowPos == 4 || MenuNowPos == 5) && MenuEdit == 1) {
 						MenuEditPos--;
 						if (MenuEditPos < 2) {
 							MenuEditPos = 11;
@@ -624,20 +625,20 @@ void loop() {
 			lcd.noBacklight();
 		}
 	}
-	//зарядка
-	if (analogRead(7) < 500) {    //762 (7.35 V) откл.зарядки 683 (6.8 V) вкл.зарядку коэф. тр-ци 0.965
+	//charging
+	if (analogRead(7) < 500) {    //762 (7.35 V) off charging 683 (6.8 V) on charging transformations 0.965
 		digitalWrite(CHARGE, LOW);
 		Chrg = 1;
 		Chrg_time = millis();
 	}
 	if (Chrg == 1) {
-		if (analogRead(7) > 570 || abs(millis() - Chrg_time) > 36000000) { //ограничение по времени 10 часов
+		if (analogRead(7) > 570 || abs(millis() - Chrg_time) > 36000000) { //time limit 10 hours
 			digitalWrite(CHARGE, HIGH);
 			Chrg = 0;
 		}
 	}
-	//разбор команд смс
-	if (EEPROM.read(0) > 0) { //чтение команд смс
+	//parsing sms commands
+	if (EEPROM.read(0) > 0) { //read sms commands
 		ph_buf = "";
 		for (tmp2 = 0; tmp2 < 10; tmp2++) {
 			ph_buf = ph_buf + EEPROM.read(tmp2 + 1);
@@ -651,7 +652,6 @@ void loop() {
 		tmp1 = 0;
 		Tin = millis();
 		Serial.flush();
-
 		Serial.println("AT+CMGR=1");
 		while (Serial.available() == 0 && Tout < 10000) {
 			Tout = millis() - Tin;
@@ -691,8 +691,8 @@ void loop() {
 			message.remove(27, 7);
 			message.remove(message.indexOf('\n', 29));
 			if (message.substring(2, 12) == ph_buf) { //!!!!!!!!!
-				if (message.substring(29, 33) == "cmd2") { //команда2 проверка баланса
-					Serial.println("AT+CUSD=1,\"#100#\""); //запрос баланса #100# транслит мтс
+				if (message.substring(29, 33) == "cmd2") { //command2 check balance
+					Serial.println("AT+CUSD=1,\"#100#\""); //balance request #100# translit mts
 					Tout = 0;
 					Tout = millis() + 5000;
 					while (Serial.available() == 0 && Tout > millis()) {
@@ -704,7 +704,7 @@ void loop() {
 					mess.remove(0, (mess.indexOf(':') + 6));
 					mess.remove(mess.indexOf('"'));
 				};
-				if (message.substring(29, 33) == "cmd1") { //команда1 статус сети 1
+				if (message.substring(29, 33) == "cmd1") { //command1 network status 1
 					mess = "Ua=";
 					mess = mess + Utek[0];
 					mess = mess + " : Ug=";
@@ -716,7 +716,7 @@ void loop() {
 			};
 		};
 	}
-	if (Utek[0] > 160 && Utek[1] < 160) { //определение тек. сх. сети
+	if (Utek[0] > 160 && Utek[1] < 160) { //determination of the current network scheme
 		type_U = 0;
 	}
 	else if (Utek[0] < 160 && Utek[1] < 160) {
@@ -735,13 +735,13 @@ void loop() {
 	if (type_U == type_U_prev && timer_on == 1) {
 		timer_on = 0;
 	}
-	//перезагрузка смс модуля перед отправкой смс
+	//reloading the sms module before sending sms
 	if (abs(millis() - T_ot) > 15000 && abs(millis() - T_ot) < 30000 && timer_on == 1 && EEPROM.read(0) > 0) {
 		digitalWrite(sms_res, LOW);
 		delay(2000);
 		digitalWrite(sms_res, HIGH);
 	}
-	//отправка смс по наступлению события
+	//sending SMS on the occurrence of an event
 	if ((abs(millis() - T_ot) > 60000 && timer_on == 1 && EEPROM.read(0) > 0)) {
 		timer_on = 0;
 		message = "";
@@ -773,7 +773,7 @@ void loop() {
 			}
 		}
 	};
-	//отправка баланса каждый месяц
+	//send balance every month
 	time.gettime();
 	if (EEPROM.read(0) > 0 && time.day == balance_day && time.Hours == balance_hour && time.minutes == balance_reset) {
 		digitalWrite(sms_res, LOW);
@@ -785,7 +785,7 @@ void loop() {
 		message = Serial.readString();
 		message = "";
 		balance = 1;
-		Serial.println("AT+CUSD=1,\"#100#\""); //запрос баланса #100# транслит мтс
+		Serial.println("AT+CUSD=1,\"#100#\""); //balance request #100# translit mts
 		Tout = 0;
 		Tout = millis() + 5000;
 		while (Serial.available() == 0 && Tout > millis()) {
